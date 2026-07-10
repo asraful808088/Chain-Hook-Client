@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Terminal, ShieldCheck, ArrowRight, Copy, Check, 
-  ExternalLink, Code, Layers, FileCode 
+import {
+  Terminal, ShieldCheck, ArrowRight, Copy, Check,
+  Code, Layers, FileCode, KeyRound, AlertTriangle, Loader2,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+
+import { useGenerateClientToken } from '../hooks/useGenerateClientToken';
 
 export default function TestAuthGenerator() {
   const navigate = useNavigate();
@@ -13,32 +14,32 @@ export default function TestAuthGenerator() {
   const [flowType, setFlowType] = useState<'login' | 'payment'>('payment');
   const [merchantName, setMerchantName] = useState('Nova Store');
   const [totalPrice, setTotalPrice] = useState('$49.99');
-  const [scopes, setScopes] = useState('openid,profile,email');
-  
+  const [apiKey, setApiKey] = useState('');
+
   const [copied, setCopied] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState('');
-  const [encodedInfo, setEncodedInfo] = useState('');
 
-  const handleGenerate = (e: React.FormEvent) => {
+  const { generate, loading, error, clientId } = useGenerateClientToken();
+
+  const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const info = {
-      platform_name: platformName,
-      platform_url: platformUrl,
+    const token = await generate({
       type: flowType,
+      platform_name: platformName,
+      base_url: platformUrl,
       merchant_name: merchantName || platformName,
-      total_price: totalPrice
-    };
+      total_price: flowType === 'payment' ? totalPrice : undefined,
+      api_key: apiKey,
+    });
 
-    const jsonStr = JSON.stringify(info);
-    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
-    setEncodedInfo(encoded);
-
-    const queryParams = new URLSearchParams();
-    queryParams.set('client_id', encoded);
-
-    const fullUrl = `/authorize?${queryParams.toString()}`;
-    setGeneratedUrl(fullUrl);
+    if (token) {
+      const queryParams = new URLSearchParams();
+      queryParams.set('client_id', token);
+      setGeneratedUrl(`/authorize?${queryParams.toString()}`);
+    } else {
+      setGeneratedUrl('');
+    }
   };
 
   const handleCopy = () => {
@@ -63,11 +64,11 @@ export default function TestAuthGenerator() {
             Developer OAuth Console
           </h2>
           <p className="text-[11px] text-[#9A9AA5] mt-0.5">
-            Configure client parameters, encode metadata payloads, and test sandbox authorization flows.
+            Configure client parameters and request a server-signed authorization token using your API key.
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-2 bg-[#D4AF37]/5 px-3 py-1.5 rounded-xl border border-[#D4AF37]/10 text-xs font-semibold text-[#D4AF37]">
-          <span>v1.2.0-Sandbox</span>
+          <span>v2.0.0-Sandbox</span>
         </div>
       </div>
 
@@ -125,7 +126,7 @@ export default function TestAuthGenerator() {
 
               {}
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Redirect URI</label>
+                <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Base / Redirect URL</label>
                 <input
                   type="text"
                   value={platformUrl}
@@ -166,25 +167,61 @@ export default function TestAuthGenerator() {
                 </>
               ) : (
                 <div className="col-span-2 space-y-1.5">
-                  <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Scopes (comma-separated)</label>
+                  <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Merchant / Consent Name</label>
                   <input
                     type="text"
-                    value={scopes}
-                    onChange={(e) => setScopes(e.target.value)}
-                    className="w-full bg-[#121218] text-white px-4 py-2.5 rounded-xl text-xs border border-zinc-800 focus:border-[#D4AF37]/50 focus:outline-none font-mono"
-                    placeholder="openid,profile,email"
-                    required
+                    value={merchantName}
+                    onChange={(e) => setMerchantName(e.target.value)}
+                    className="w-full bg-[#121218] text-white px-4 py-2.5 rounded-xl text-xs border border-zinc-800 focus:border-[#D4AF37]/50 focus:outline-none"
+                    placeholder="Nova Store"
                   />
                 </div>
               )}
+
+              {}
+              <div className="col-span-2 space-y-1.5">
+                <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 flex items-center gap-1.5">
+                  <KeyRound size={11} className="text-[#D4AF37]" />
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="w-full bg-[#121218] text-white px-4 py-2.5 rounded-xl text-xs border border-zinc-800 focus:border-[#D4AF37]/50 focus:outline-none font-mono"
+                  placeholder="Your client's secret API key"
+                  autoComplete="off"
+                  required
+                />
+                <p className="text-[9px] text-[#71717A]">
+                  Verified server-side against your registered Client record — this is what actually authorizes token generation now.
+                </p>
+              </div>
             </div>
+
+            {error && (
+              <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/25 text-red-400 text-xs rounded-xl px-4 py-3">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
 
             <button
               type="submit"
-              className="w-full mt-4 bg-gradient-to-r from-[#D4AF37] to-[#B8962E] hover:from-[#E3C053] hover:to-[#C6A238] text-[#050508] font-bold py-3 rounded-xl text-xs transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#D4AF37]/10"
+              disabled={loading}
+              className="w-full mt-4 bg-gradient-to-r from-[#D4AF37] to-[#B8962E] hover:from-[#E3C053] hover:to-[#C6A238] disabled:opacity-50 disabled:cursor-not-allowed text-[#050508] font-bold py-3 rounded-xl text-xs transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#D4AF37]/10"
             >
-              <Code size={14} />
-              Generate Encoded OAuth Payload
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Verifying with server...
+                </>
+              ) : (
+                <>
+                  <Code size={14} />
+                  Generate Verified OAuth Token
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -202,15 +239,17 @@ export default function TestAuthGenerator() {
               {!generatedUrl ? (
                 <div className="h-48 border border-dashed border-[#27272A] rounded-2xl flex flex-col items-center justify-center text-center p-4">
                   <Code size={24} className="text-[#52525B] mb-2" />
-                  <p className="text-xs text-[#71717A]">Configure the form and click generate to view the OAuth payload URL.</p>
+                  <p className="text-xs text-[#71717A]">
+                    Enter your API key and configuration, then generate to receive a server-signed client_id.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {}
                   <div className="space-y-1.5">
-                    <span className="text-[9px] uppercase font-bold tracking-widest text-zinc-500">Base64 Encoded `client_id`</span>
+                    <span className="text-[9px] uppercase font-bold tracking-widest text-zinc-500">Signed `client_id` Token</span>
                     <div className="bg-[#121218] p-3 rounded-xl border border-zinc-800 text-[10px] font-mono text-[#3EC6C0] break-all max-h-24 overflow-y-auto">
-                      {encodedInfo}
+                      {clientId}
                     </div>
                   </div>
 
@@ -258,10 +297,11 @@ export default function TestAuthGenerator() {
           <div className="p-4 rounded-3xl bg-[#16161D] border border-[#27272A] space-y-2">
             <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
               <ShieldCheck size={14} className="text-[#3EC6C0]" />
-              Branding Note
+              Security Note
             </h4>
             <p className="text-[10px] text-[#71717A] leading-relaxed">
-              This environment has been updated to use the <strong>Chain Hook</strong> secure payment routing protocol. All tokens, screens, settings, logs, and sandbox checkouts have been updated to reflect the new platform branding.
+              client_id tokens are now minted and signed exclusively by the server after verifying your API key
+              against a registered, active client. Tokens expire after 10 minutes and cannot be forged or edited client-side.
             </p>
           </div>
         </div>
